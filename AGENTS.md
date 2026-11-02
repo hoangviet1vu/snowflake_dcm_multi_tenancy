@@ -20,7 +20,8 @@ https://docs.snowflake.com/user-guide/dcm-projects/dcm-projects-files
 |---|---|
 | What every tenant gets (template) | `sources/macros/tenant.sql` |
 | Shared platform objects (tags, governance schema) | `sources/definitions/_platform/` |
-| Add or modify one tenant | `sources/definitions/tenants/<tenant>/<tenant>.sql` |
+| Tenant roles (shared by all envs) | `sources/definitions/tenants/<tenant>/<tenant>.sql` |
+| One tenant environment (DB, warehouse, tags) | `sources/definitions/tenants/<tenant>/<env>/<env>.sql` |
 | Test tenant for the DEV target | `sources/definitions/tenants/_sandbox/` |
 | Targets and environment variables | `manifest.yml` |
 | One-time or imperative SQL (bootstrap, cleanup) | `scripts/`, never under `sources/` |
@@ -74,9 +75,10 @@ https://docs.snowflake.com/user-guide/dcm-projects/dcm-projects-files
 
 ### Add a tenant
 
-1. Copy `sources/definitions/tenants/acme/acme.sql` to `tenants/<tenant>/<tenant>.sql`.
-2. Replace the tenant name and adjust `wh_size` per environment.
-3. Keep the `{% if platform_env == 'PROD' %}` guard.
+1. Copy `sources/definitions/tenants/acme/acme.sql` to `tenants/<tenant>/<tenant>.sql` (roles only).
+2. For each environment, copy `tenants/acme/<env>/<env>.sql` to `tenants/<tenant>/<env>/<env>.sql`.
+3. Replace the tenant name and adjust `wh_size` per environment.
+4. Keep the `{% if platform_env == 'PROD' %}` guard in every file.
 4. Do not edit `manifest.yml`.
 
 ### Change what every tenant gets

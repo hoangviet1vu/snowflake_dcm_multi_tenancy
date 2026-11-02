@@ -42,8 +42,8 @@ Two layers, split by ownership:
 - **One manifest, two targets.** `DEV` deploys only the `SANDBOX` tenant so template changes can
   be tested. `PROD` deploys the real tenants.
 - **The folder is the registration.** Each tenant has its own folder under
-  `sources/definitions/tenants/`. The manifest never lists tenants, so it stays small as the
-  number of tenants grows.
+  `sources/definitions/tenants/`, with the tenant roles at the top and one subfolder per
+  environment. The manifest never lists tenants, so it stays small as the number of tenants grows.
 - **Macros hold the template.** `tenant_roles()` and `tenant_env()` in `sources/macros/` define
   what a tenant gets. Tenant files only call them with tenant-specific arguments.
 
@@ -59,15 +59,28 @@ Two layers, split by ownership:
 │       ├── _platform/
 │       │   └── governance.sql      # GOVERNANCE schema + TENANT_ID / TENANT_ENV tags
 │       └── tenants/
-│           ├── _sandbox/sandbox.sql    # DEV target only
-│           ├── acme/acme.sql           # PROD target
-│           └── globex/globex.sql       # PROD target
+│           ├── _sandbox/               # DEV target only
+│           │   ├── sandbox.sql         # tenant roles
+│           │   └── dev/dev.sql         # DB, warehouse, tags for the DEV env
+│           ├── acme/                   # PROD target
+│           │   ├── acme.sql            # tenant roles (T_ACME_ADMIN, T_ACME_READER)
+│           │   ├── dev/dev.sql         # DB, warehouse, tags for the DEV env
+│           │   ├── staging/staging.sql # ... STAGING env
+│           │   └── prod/prod.sql       # ... PROD env
+│           └── globex/                 # PROD target
+│               ├── globex.sql
+│               └── prod/prod.sql
 ├── scripts/
 │   ├── 00_bootstrap.sql            # one-time setup, run by ACCOUNTADMIN
 │   └── 99_cleanup.sql              # tear down the PoC
 ├── AGENTS.md                       # rules for AI coding agents
 └── out/                            # local PLAN output (git-ignored)
 ```
+
+Each tenant folder holds one SQL file for the tenant's **roles** (shared by all environments) and
+one subfolder per **environment** (`dev`, `staging`, `prod`). An environment file defines that
+environment's database, warehouse and tag attachments. Adding or removing an environment is a
+matter of adding or removing its subfolder.
 
 Everything under `sources/` is uploaded and rendered by DCM. Anything that must **not** be run by
 DCM, such as bootstrap SQL, lives in `scripts/`.
@@ -229,25 +242,34 @@ DEFINE TAG    PLATFORM_DB.GOVERNANCE{{suffix}}.TENANT_ID;
 DEFINE TAG    PLATFORM_DB.GOVERNANCE{{suffix}}.TENANT_ENV;
 ```
 
-### A tenant file (`sources/definitions/tenants/acme/acme.sql`)
+### Tenant roles (`sources/definitions/tenants/acme/acme.sql`)
 
 ```sql
 {% if platform_env == 'PROD' %}
 {{ tenant_roles('ACME') }}
-{{ tenant_env('ACME', 'DEV') }}
-{{ tenant_env('ACME', 'STAGING') }}
+{% endif %}
+```
+
+### Tenant environments (`sources/definitions/tenants/acme/<env>/<env>.sql`)
+
+Each environment file carries the same target guard and calls `tenant_env` for its own environment.
+For example `acme/prod/prod.sql`:
+
+```sql
+{% if platform_env == 'PROD' %}
 {{ tenant_env('ACME', 'PROD', wh_size='MEDIUM') }}
 {% endif %}
 ```
 
-The sandbox file uses the same macros guarded by `{% if platform_env == 'DEV' %}`.
+`acme/dev/dev.sql` and `acme/staging/staging.sql` are the same with `'DEV'` / `'STAGING'` and their
+own `wh_size`. The sandbox files use the same macros guarded by `{% if platform_env == 'DEV' %}`.
 
 ## Operations
 
 ### Onboard a tenant
 
-1. Create `sources/definitions/tenants/<tenant>/<tenant>.sql`. Copy `acme.sql` and change the name
-   and sizes.
+1. Create `sources/definitions/tenants/<tenant>/<tenant>.sql` for the roles, and one
+   `<tenant>/<env>/<env>.sql` per environment. Copy the `acme` files and change the name and sizes.
 2. Open a PR. Run `snow dcm plan --target PROD` and confirm the plan contains **only CREATE**
    operations for `T_<TENANT>_*` objects.
 3. Merge, then deploy to PROD.
